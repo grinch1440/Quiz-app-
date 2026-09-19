@@ -95,3 +95,4 @@ The icon dropdown in admin.html is limited to icons already imported in `src/App
 ## About security
 
 `admin.html` currently has full read/write access to your database using the public "anon" key — there's no login screen. That key is visible to anyone who inspects your deployed site's network requests, meaning technically anyone could also write to your database if they found it. For a personal project this is a common, accepted tradeoff. If this ever needs real protection (e.g. you're sharing the app publicly and don't want strangers editing content), the fix is to add Supabase Auth and change the write policies in `schema.sql` from `using (true)` to something like `using (auth.uid() is not null)` — that's a good next step to ask for when you're ready.
+
