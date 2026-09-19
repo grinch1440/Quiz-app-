@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Quiz Master — Admin</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+  :root{
+    --bg:#1B1023; --surface:#251533; --surface2:#2E1A40; --text:#F5EEF7; --textDim:#A897B8; --border:#3B2350;
+    --coral:#FF4E6A; --lime:#B4FF39; --cyan:#3FD5FF; --gold:#FFC93C;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+  h1,h2,h3,.heading{font-family:'Space Grotesk',sans-serif;}
+  header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px;}
+  header .brand{display:flex;align-items:center;gap:10px;}
+  header .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--coral),var(--gold));display:flex;align-items:center;justify-content:center;font-weight:800;color:#1B1023;}
+  header .stats{display:flex;gap:16px;font-size:12.5px;color:var(--textDim);}
+  header .stats b{color:var(--text);}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;}
+  button{font-family:inherit;cursor:pointer;}
+  .btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:10px;font-size:12.5px;font-weight:600;}
+  .btn:hover{border-color:var(--coral);}
+  .btn.primary{background:linear-gradient(135deg,var(--coral),var(--gold));border:none;color:#1B1023;font-weight:800;}
+  .btn.danger{background:transparent;border:1px solid var(--coral);color:var(--coral);}
+  .btn.small{padding:5px 10px;font-size:11.5px;border-radius:8px;}
+  .layout{display:grid;grid-template-columns:260px 280px 1fr;gap:0;height:calc(100vh - 66px);}
+  @media (max-width: 900px){
+    .layout{grid-template-columns:1fr;height:auto;}
+    .pane{border-right:none !important;border-bottom:1px solid var(--border);display:none;min-height:calc(100vh - 66px);}
+    body.step-cats #catPane{display:block;}
+    body.step-subs #subPane{display:block;}
+    body.step-qs #qPane{display:block;}
+    .back-btn{display:inline-flex !important;}
+  }
+  .back-btn{display:none;font-size:17px;}
+  .pane{padding:16px;overflow-y:auto;border-right:1px solid var(--border);}
+  .pane-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .pane-head h3{margin:0;font-size:13px;color:var(--textDim);text-transform:uppercase;letter-spacing:.06em;}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--surface);cursor:pointer;transition:.15s;}
+  .row:hover{border-color:var(--coral);}
+  .row.active{border-color:var(--gold);background:var(--surface2);}
+  .row .label{font-weight:600;font-size:13px;}
+  .row .meta{font-size:10.5px;color:var(--textDim);margin-top:2px;}
+  .row .icon-badge{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;}
+  .row-main{display:flex;align-items:center;gap:10px;flex:1;min-width:0;}
+  .row-main div{min-width:0;}
+  .badge{font-size:10px;padding:2px 7px;border-radius:8px;background:var(--surface2);color:var(--textDim);flex-shrink:0;}
+  .badge.empty{color:var(--gold);}
+  .row-actions{display:flex;gap:4px;flex-shrink:0;}
+  .icon-btn{background:none;border:none;color:var(--textDim);padding:4px;border-radius:6px;font-size:13px;}
+  .icon-btn:hover{color:var(--coral);background:var(--surface2);}
+  .empty-hint{color:var(--textDim);font-size:12.5px;text-align:center;margin-top:30px;padding:0 10px;}
+  .qcard{border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;background:var(--surface);}
+  .qcard textarea, .qcard input[type=text]{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;margin-top:4px;resize:vertical;}
+  .qcard label{font-size:11px;color:var(--textDim);font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+  .opt-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
+  .opt-row input[type=radio]{accent-color:var(--lime);flex-shrink:0;}
+  .qcard-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:10px;}
+  .form-inline{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;}
+  .form-inline input[type=text], .form-inline select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;}
+  .form-inline .form-row{display:flex;gap:8px;}
+  .form-inline .form-row > *{flex:1;}
+  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--coral);color:#fff;padding:10px 18px;border-radius:30px;font-size:13px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:50;opacity:0;transition:opacity .25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  input[type=color]{width:36px;height:34px;padding:2px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);}
+  .inline-edit{width:100%;background:var(--surface2);border:1px solid var(--gold);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;}
+  .setup-screen{max-width:560px;margin:60px auto;padding:0 20px;line-height:1.6;}
+  .setup-screen code{background:var(--surface2);padding:2px 6px;border-radius:6px;font-size:12.5px;}
+  .setup-screen pre{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;overflow-x:auto;font-size:12px;}
+  .save-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:6px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">Q</div>
+    <div>
+      <div class="heading" style="font-weight:700;font-size:15px;">Quiz Master — Admin</div>
+      <div class="stats" id="statsBar"></div>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="exportJsonBtn">Download JSON backup</button>
+  </div>
+</header>
+
+<div id="setupScreen" style="display:none;"></div>
+<div class="layout" id="mainLayout">
+  <div class="pane" id="catPane">
+    <div class="pane-head"><h3>Categories</h3><button class="btn small" id="addCatBtn">+ Add</button></div>
+    <div id="addCatForm"></div>
+    <div id="catList"></div>
+  </div>
+  <div class="pane" id="subPane">
+    <div class="pane-head"><div style="display:flex;align-items:center;gap:6px;"><button class="icon-btn back-btn" id="backToCatsBtn" title="Back to categories">‹</button><h3 id="subPaneTitle">Sub-topics</h3></div><button class="btn small" id="addSubBtn" style="display:none">+ Add</button></div>
+    <div id="subList"><div class="empty-hint">Select a category to see its sub-topics.</div></div>
+  </div>
+  <div class="pane" id="qPane" style="border-right:none;">
+    <div class="pane-head"><div style="display:flex;align-items:center;gap:6px;"><button class="icon-btn back-btn" id="backToSubsBtn" title="Back to sub-topics">‹</button><h3 id="qPaneTitle">Questions</h3></div><button class="btn small" id="addQBtn" style="display:none">+ Add question</button></div>
+    <div id="qList"><div class="empty-hint">Select a sub-topic to see and edit its questions.</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+/* ============================================================
+   Quiz Master — Admin (Supabase-backed)
+   Paste your project's URL and public anon key below. Both are
+   safe to expose in client-side code — that's how Supabase's anon
+   key is designed to work — but note that with the RLS policies in
+   schema.sql, this key also grants write access with no login.
+   Find these under Project Settings → API in your Supabase dashboard.
+   ============================================================ */
+const SUPABASE_URL = "https://ygfmtwubxlsbskcwirub.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_OFyyimFO81KnAClep57Hng_gk3oLe4M";
+
+const ICON_NAMES = ["Brain","GraduationCap","Compass","Landmark","Atom","Cpu","Gamepad2","Clapperboard","Swords","Music","Dumbbell","Goal","Puzzle","Languages","UtensilsCrossed","PartyPopper","ClipboardCheck","Briefcase","Globe","Sparkles"];
+const PALETTE = ["#FFC93C","#3FD5FF","#4CC9F0","#E07A5F","#7C3AED","#B4FF39","#FF4E6A","#F72585","#4ADE80","#34D399","#8B5CF6","#FB923C","#F472B6"];
+
+function slugify(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,""); }
+function uniqueSlug(base, existing){ let slug = base || "item", n = 2; while(existing.has(slug)){ slug = base + "-" + n; n++; } return slug; }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function showToast(msg){ const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 2600); }
+
+/* ---------------- Setup check ---------------- */
+const needsSetup = !SUPABASE_URL || SUPABASE_URL.includes("YOUR_SUPABASE_URL") || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY");
+
+if (needsSetup) {
+  document.getElementById("mainLayout").style.display = "none";
+  const setupEl = document.getElementById("setupScreen");
+  setupEl.style.display = "block";
+  setupEl.innerHTML = `
+    <div class="setup-screen">
+      <h2 class="heading">Connect this admin panel to Supabase</h2>
+      <p>Open <code>admin.html</code> in a text editor and fill in these two lines near the top of the script with values from your Supabase project (Project Settings → API):</p>
+      <pre>const SUPABASE_URL = "https://xxxxxxxx.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOi...";</pre>
+      <p>If you haven't set up the database tables yet, run <code>supabase/schema.sql</code> and then <code>supabase/seed.sql</code> in your project's SQL Editor first.</p>
+      <p>Save this file and reload the page.</p>
+    </div>`;
+} else {
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  runAdmin(sb);
+}
+
+function runAdmin(sb){
+
+/* ---------------- State ---------------- */
+let DATA = { categories: [], subtopics: [], questions: [] };
+let selectedCatId = null;
+let selectedSubId = null;
+let editingCatId = null;
+let confirmDeleteCatId = null;
+let editingSubId = null;
+let confirmDeleteSubId = null;
+let showAddSubForm = false;
+let confirmDeleteQId = null;
+let loadError = null;
+
+function subtopicsFor(catId){ return DATA.subtopics.filter(s => s.category_id === catId); }
+function questionsFor(subId){ return DATA.questions.filter(q => q.subtopic_id === subId); }
+
+async function loadAll(){
+  const [catRes, subRes, qRes] = await Promise.all([
+    sb.from("categories").select("*").order("sort_order"),
+    sb.from("subtopics").select("*").order("sort_order"),
+    sb.from("questions").select("*").order("sort_order"),
+  ]);
+  const err = catRes.error || subRes.error || qRes.error;
+  if (err) { loadError = err.message; renderAll(); return; }
+  DATA = { categories: catRes.data || [], subtopics: subRes.data || [], questions: qRes.data || [] };
+  loadError = null;
+  renderAll();
+}
+
+/* ---------------- Rendering ---------------- */
+function renderAll(){
+  updateStepClass();
+  renderStats();
+  renderCategories();
+  renderSubtopics();
+  renderQuestions();
+}
+
+function updateStepClass(){
+  document.body.classList.remove("step-cats","step-subs","step-qs");
+  if (selectedSubId) document.body.classList.add("step-qs");
+  else if (selectedCatId) document.body.classList.add("step-subs");
+  else document.body.classList.add("step-cats");
+}
+
+function renderStats(){
+  if (loadError) {
+    document.getElementById("statsBar").innerHTML = `<span style="color:var(--coral);">Couldn't load data: ${escapeHtml(loadError)}</span>`;
+    return;
+  }
+  const catCount = DATA.categories.length;
+  const subCount = DATA.subtopics.length;
+  const qCount = DATA.questions.length;
+  const readyCount = new Set(DATA.questions.map(q=>q.subtopic_id)).size;
+  document.getElementById("statsBar").innerHTML =
+    `<span><b>${catCount}</b> categories</span><span><b>${subCount}</b> sub-topics</span><span><b>${readyCount}</b> with questions</span><span><b>${qCount}</b> total questions</span>`;
+}
+
+function renderCategories(){
+  const list = document.getElementById("catList");
+  list.innerHTML = "";
+  DATA.categories.forEach(c => {
+    const populated = subtopicsFor(c.id).filter(s => questionsFor(s.id).length>0).length;
+    const row = document.createElement("div");
+    row.className = "row" + (c.id===selectedCatId ? " active" : "");
+
+    if (editingCatId === c.id) {
+      row.innerHTML = `
+        <div class="row-main" style="width:100%;"><input type="text" class="inline-edit" value="${escapeHtml(c.label)}" data-role="editInput" /></div>
+        <div class="row-actions">
+          <button class="icon-btn" data-act="saveEdit" title="Save">✓</button>
+          <button class="icon-btn" data-act="cancelEdit" title="Cancel">✕</button>
+        </div>`;
+      row.querySelector('[data-act="saveEdit"]').addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const val = row.querySelector('[data-role="editInput"]').value.trim();
+        if (val) {
+          const { error } = await sb.from("categories").update({ label: val }).eq("id", c.id);
+          if (error) showToast("Error: " + error.message);
+        }
+        editingCatId = null; await loadAll();
+      });
+      row.querySelector('[data-act="cancelEdit"]').addEventListener("click", (e) => { e.stopPropagation(); editingCatId = null; renderAll(); });
+      list.appendChild(row); return;
+    }
+
+    if (confirmDeleteCatId === c.id) {
+      row.innerHTML = `
+        <div class="row-main"><span style="font-size:12.5px;color:var(--coral);font-weight:700;">Delete "${escapeHtml(c.label)}" and everything in it?</span></div>
+        <div class="row-actions">
+          <button class="btn small danger" data-act="confirmYes">Yes, delete</button>
+          <button class="btn small" data-act="confirmNo">Cancel</button>
+        </div>`;
+      row.querySelector('[data-act="confirmYes"]').addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const { error } = await sb.from("categories").delete().eq("id", c.id);
+        if (error) { showToast("Error: " + error.message); confirmDeleteCatId = null; renderAll(); return; }
+        if (selectedCatId===c.id){ selectedCatId=null; selectedSubId=null; }
+        confirmDeleteCatId = null; await loadAll();
+      });
+      row.querySelector('[data-act="confirmNo"]').addEventListener("click", (e) => { e.stopPropagation(); confirmDeleteCatId = null; renderAll(); });
+      list.appendChild(row); return;
+    }
+
+    row.innerHTML = `
+      <div class="row-main">
+        <div class="icon-badge" style="background:${c.color}33;color:${c.color}">${c.icon.slice(0,1)}</div>
+        <div><div class="label">${escapeHtml(c.label)}</div><div class="meta">${subtopicsFor(c.id).length} topics · ${populated} ready</div></div>
+      </div>
+      <div class="row-actions">
+        <button class="icon-btn" title="Rename" data-act="rename">✎</button>
+        <button class="icon-btn" title="Delete" data-act="delete">✕</button>
+      </div>`;
+    row.addEventListener("click", (e) => { if (e.target.dataset.act) return; selectedCatId = c.id; selectedSubId = null; renderAll(); });
+    row.querySelector('[data-act="rename"]').addEventListener("click", (e) => { e.stopPropagation(); editingCatId = c.id; renderAll(); });
+    row.querySelector('[data-act="delete"]').addEventListener("click", (e) => { e.stopPropagation(); confirmDeleteCatId = c.id; renderAll(); });
+    list.appendChild(row);
+  });
+}
+
+function renderSubtopics(){
+  const wrap = document.getElementById("subList");
+  const title = document.getElementById("subPaneTitle");
+  const addBtn = document.getElementById("addSubBtn");
+  const cat = DATA.categories.find(c => c.id === selectedCatId);
+  if (!cat){ wrap.innerHTML = '<div class="empty-hint">Select a category to see its sub-topics.</div>'; title.textContent = "Sub-topics"; addBtn.style.display="none"; return; }
+  title.textContent = cat.label;
+  addBtn.style.display = "inline-block";
+  wrap.innerHTML = "";
+
+  if (showAddSubForm) {
+    const form = document.createElement("div");
+    form.className = "form-inline";
+    form.innerHTML = `
+      <input type="text" data-role="newSubInput" placeholder="Sub-topic name (e.g. Marine Biology)" />
+      <div class="form-row">
+        <button class="btn primary small" data-act="create">Add sub-topic</button>
+        <button class="btn small" data-act="cancel">Cancel</button>
+      </div>`;
+    form.querySelector('[data-act="create"]').addEventListener("click", async () => {
+      const val = form.querySelector('[data-role="newSubInput"]').value.trim();
+      if (!val) return showToast("Enter a sub-topic name");
+      const existingIds = new Set(DATA.subtopics.map(s=>s.id));
+      const id = uniqueSlug(slugify(val), existingIds);
+      const sort_order = subtopicsFor(cat.id).length;
+      const { error } = await sb.from("subtopics").insert({ id, category_id: cat.id, label: val, sort_order });
+      if (error) return showToast("Error: " + error.message);
+      selectedSubId = id; showAddSubForm = false; await loadAll();
+    });
+    form.querySelector('[data-act="cancel"]').addEventListener("click", () => { showAddSubForm = false; renderAll(); });
+    wrap.appendChild(form);
+  }
+
+  subtopicsFor(cat.id).forEach(s => {
+    const qCount = questionsFor(s.id).length;
+    const row = document.createElement("div");
+    row.className = "row" + (s.id===selectedSubId ? " active" : "");
+
+    if (editingSubId === s.id) {
+      row.innerHTML = `
+        <div class="row-main" style="width:100%;"><input type="text" class="inline-edit" value="${escapeHtml(s.label)}" data-role="editInput" /></div>
+        <div class="row-actions">
+          <button class="icon-btn" data-act="saveEdit" title="Save">✓</button>
+          <button class="icon-btn" data-act="cancelEdit" title="Cancel">✕</button>
+        </div>`;
+      row.querySelector('[data-act="saveEdit"]').addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const val = row.querySelector('[data-role="editInput"]').value.trim();
+        if (val) {
+          const { error } = await sb.from("subtopics").update({ label: val }).eq("id", s.id);
+          if (error) showToast("Error: " + error.message);
+        }
+        editingSubId = null; await loadAll();
+      });
+      row.querySelector('[data-act="cancelEdit"]').addEventListener("click", (e) => { e.stopPropagation(); editingSubId = null; renderAll(); });
+      wrap.appendChild(row); return;
+    }
+
+    if (confirmDeleteSubId === s.id) {
+      row.innerHTML = `
+        <div class="row-main"><span style="font-size:12.5px;color:var(--coral);font-weight:700;">Delete "${escapeHtml(s.label)}" and its questions?</span></div>
+        <div class="row-actions">
+          <button class="btn small danger" data-act="confirmYes">Yes, delete</button>
+          <button class="btn small" data-act="confirmNo">Cancel</button>
+        </div>`;
+      row.querySelector('[data-act="confirmYes"]').addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const { error } = await sb.from("subtopics").delete().eq("id", s.id);
+        if (error) { showToast("Error: " + error.message); confirmDeleteSubId = null; renderAll(); return; }
+        if (selectedSubId===s.id) selectedSubId=null;
+        confirmDeleteSubId = null; await loadAll();
+      });
+      row.querySelector('[data-act="confirmNo"]').addEventListener("click", (e) => { e.stopPropagation(); confirmDele
