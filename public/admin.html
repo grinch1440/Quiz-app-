@@ -341,4 +341,158 @@ function renderSubtopics(){
         if (selectedSubId===s.id) selectedSubId=null;
         confirmDeleteSubId = null; await loadAll();
       });
-      row.querySelector('[data-act="confirmNo"]').addEventListener("click", (e) => { e.stopPropagation(); confirmDele
+      row.querySelector('[data-act="confirmNo"]').addEventListener("click", (e) => { e.stopPropagation(); confirmDeleteSubId = null; renderAll(); });
+      wrap.appendChild(row); return;
+    }
+
+    row.innerHTML = `
+      <div class="row-main"><div><div class="label">${escapeHtml(s.label)}</div></div></div>
+      <div class="row-actions">
+        <span class="badge ${qCount===0?'empty':''}">${qCount===0?'Soon':qCount+' Q'}</span>
+        <button class="icon-btn" title="Rename" data-act="rename">✎</button>
+        <button class="icon-btn" title="Delete" data-act="delete">✕</button>
+      </div>`;
+    row.addEventListener("click", (e) => { if (e.target.dataset.act) return; selectedSubId = s.id; renderAll(); });
+    row.querySelector('[data-act="rename"]').addEventListener("click", (e) => { e.stopPropagation(); editingSubId = s.id; renderAll(); });
+    row.querySelector('[data-act="delete"]').addEventListener("click", (e) => { e.stopPropagation(); confirmDeleteSubId = s.id; renderAll(); });
+    wrap.appendChild(row);
+  });
+}
+
+function renderQuestions(){
+  const wrap = document.getElementById("qList");
+  const title = document.getElementById("qPaneTitle");
+  const addBtn = document.getElementById("addQBtn");
+  const sub = DATA.subtopics.find(s => s.id === selectedSubId);
+  if (!sub){ wrap.innerHTML = '<div class="empty-hint">Select a sub-topic to see and edit its questions.</div>'; title.textContent = "Questions"; addBtn.style.display="none"; return; }
+  const qs = questionsFor(sub.id);
+  title.textContent = sub.label;
+  addBtn.style.display = "inline-block";
+  wrap.innerHTML = "";
+  if (qs.length===0) wrap.innerHTML = '<div class="empty-hint">No questions yet — click "+ Add question" to write the first one.</div>';
+
+  qs.forEach((q) => {
+    const card = document.createElement("div");
+    card.className = "qcard";
+    card.innerHTML = `
+      <label>Question</label>
+      <textarea rows="2" data-field="question">${escapeHtml(q.question)}</textarea>
+      <label style="margin-top:10px;display:block;">Answer options (select the correct one)</label>
+      ${[0,1,2,3].map(oi => `
+        <div class="opt-row">
+          <input type="radio" name="correct-${q.id}" ${q.correct===oi?"checked":""} data-field="correct" data-optidx="${oi}" />
+          <input type="text" style="margin-top:0;flex:1;" data-field="option" data-optidx="${oi}" value="${escapeHtml(q.options[oi]||"")}" placeholder="Option ${oi+1}" />
+        </div>`).join("")}
+      <label style="margin-top:10px;display:block;">Explanation</label>
+      <textarea rows="2" data-field="explain">${escapeHtml(q.explain||"")}</textarea>
+      <div class="qcard-foot">
+        ${confirmDeleteQId === q.id
+          ? `<span style="font-size:12px;color:var(--coral);font-weight:700;margin-right:auto;align-self:center;">Delete this question?</span>
+             <button class="btn small danger" data-act="confirmYes">Yes, delete</button>
+             <button class="btn small" data-act="confirmNo">Cancel</button>`
+          : `<span class="save-hint" style="font-size:11px;color:var(--textDim);margin-right:auto;align-self:center;">Saves automatically when you click away</span>
+             <button class="btn small danger" data-act="delete">Delete question</button>`}
+      </div>`;
+
+    // Edits update the in-memory row immediately (so the UI feels responsive)
+    // and are pushed to Supabase on blur, rather than on every keystroke.
+    async function persistRow(){
+      const { error } = await sb.from("questions").update({
+        question: q.question, options: q.options, correct: q.correct, explain: q.explain
+      }).eq("id", q.id);
+      if (error) showToast("Error saving: " + error.message);
+    }
+
+    const qInput = card.querySelector('[data-field="question"]');
+    qInput.addEventListener("input", (e) => { q.question = e.target.value; });
+    qInput.addEventListener("blur", persistRow);
+
+    const explainInput = card.querySelector('[data-field="explain"]');
+    explainInput.addEventListener("input", (e) => { q.explain = e.target.value; });
+    explainInput.addEventListener("blur", persistRow);
+
+    card.querySelectorAll('[data-field="option"]').forEach(inp => {
+      inp.addEventListener("input", (e) => { q.options[+e.target.dataset.optidx] = e.target.value; });
+      inp.addEventListener("blur", persistRow);
+    });
+    card.querySelectorAll('[data-field="correct"]').forEach(inp => {
+      inp.addEventListener("change", async (e) => { q.correct = +e.target.dataset.optidx; await persistRow(); });
+    });
+
+    if (confirmDeleteQId === q.id) {
+      card.querySelector('[data-act="confirmYes"]').addEventListener("click", async () => {
+        const { error } = await sb.from("questions").delete().eq("id", q.id);
+        if (error) { showToast("Error: " + error.message); confirmDeleteQId = null; renderAll(); return; }
+        confirmDeleteQId = null; await loadAll();
+      });
+      card.querySelector('[data-act="confirmNo"]').addEventListener("click", () => { confirmDeleteQId = null; renderAll(); });
+    } else {
+      card.querySelector('[data-act="delete"]').addEventListener("click", () => { confirmDeleteQId = q.id; renderAll(); });
+    }
+    wrap.appendChild(card);
+  });
+}
+
+/* ---------------- Category add form ---------------- */
+document.getElementById("addCatBtn").addEventListener("click", () => {
+  const box = document.getElementById("addCatForm");
+  if (box.innerHTML) { box.innerHTML=""; return; }
+  const iconOpts = ICON_NAMES.map(n=>`<option value="${n}">${n}</option>`).join("");
+  box.innerHTML = `
+    <div class="form-inline">
+      <input type="text" id="newCatLabel" placeholder="Category name (e.g. Cooking Skills)" />
+      <div class="form-row">
+        <select id="newCatIcon">${iconOpts}</select>
+        <input type="color" id="newCatColor" value="${PALETTE[Math.floor(Math.random()*PALETTE.length)]}" />
+      </div>
+      <button class="btn primary small" id="createCatBtn">Create category</button>
+    </div>`;
+  document.getElementById("createCatBtn").addEventListener("click", async () => {
+    const label = document.getElementById("newCatLabel").value.trim();
+    if (!label) return showToast("Enter a category name");
+    const existingIds = new Set(DATA.categories.map(c=>c.id));
+    const id = uniqueSlug(slugify(label), existingIds);
+    const icon = document.getElementById("newCatIcon").value;
+    const color = document.getElementById("newCatColor").value;
+    const sort_order = DATA.categories.length;
+    const { error } = await sb.from("categories").insert({ id, label, icon, color, sort_order });
+    if (error) return showToast("Error: " + error.message);
+    box.innerHTML = ""; selectedCatId = id; selectedSubId = null;
+    await loadAll();
+    showToast("Category added — remember to add its icon import in App.jsx if it's new to the app");
+  });
+});
+
+/* ---------------- Sub-topic add toggle ---------------- */
+document.getElementById("addSubBtn").addEventListener("click", () => { showAddSubForm = !showAddSubForm; renderAll(); });
+
+/* ---------------- Question add ---------------- */
+document.getElementById("addQBtn").addEventListener("click", async () => {
+  if (!selectedSubId) return;
+  const sort_order = questionsFor(selectedSubId).length;
+  const { error } = await sb.from("questions").insert({
+    subtopic_id: selectedSubId, question: "New question — edit me",
+    options: ["Option 1","Option 2","Option 3","Option 4"], correct: 0,
+    explain: "Explain the correct answer here.", sort_order,
+  });
+  if (error) return showToast("Error: " + error.message);
+  await loadAll();
+});
+
+/* ---------------- Back buttons ---------------- */
+document.getElementById("backToCatsBtn").addEventListener("click", () => { selectedCatId = null; selectedSubId = null; renderAll(); });
+document.getElementById("backToSubsBtn").addEventListener("click", () => { selectedSubId = null; renderAll(); });
+
+/* ---------------- Backup export ---------------- */
+document.getElementById("exportJsonBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "quiz-data-backup.json"; a.click();
+});
+
+loadAll();
+
+} // end runAdmin
+</script>
+</body>
+</html>
