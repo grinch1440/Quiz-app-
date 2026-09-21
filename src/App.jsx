@@ -122,6 +122,36 @@ const THEME = {
     coral: "#DC2626", lime: "#16A34A", cyan: "#0D9488", gold: "#CA8A04", violet: "#7C3AED", pink: "#DB2777" },
 };
 
+function getOrCreateDeviceId() {
+  try {
+    let id = localStorage.getItem("qm_device_id");
+    if (!id) {
+      id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem("qm_device_id", id);
+    }
+    return id;
+  } catch (e) {
+    return `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+async function syncLeaderboard(deviceId, p) {
+  try {
+    await supabase.from("leaderboard").upsert({
+      device_id: deviceId,
+      username: p.username || "Player",
+      level: p.level,
+      points: p.points,
+      coins: p.coins,
+      day_streak: p.dayStreak,
+      achievements_count: p.achievements.length,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("Leaderboard sync failed:", e);
+  }
+}
+
 export default function QuizMaster() {
   const [booting, setBooting] = useState(true);
   const [dataError, setDataError] = useState(false);
@@ -136,6 +166,8 @@ export default function QuizMaster() {
   const [toast, setToast] = useState(null);
 
   const T = THEME[themeMode];
+  const deviceIdRef = useRef(null);
+  if (deviceIdRef.current === null) deviceIdRef.current = getOrCreateDeviceId();
 
   useEffect(() => {
     (async () => {
@@ -153,6 +185,16 @@ export default function QuizMaster() {
   const saveProfile = useCallback((next) => {
     setProfile(next);
     try { localStorage.setItem("qm_profile", JSON.stringify(next)); } catch (e) { console.error(e); }
+    syncLeaderboard(deviceIdRef.current, next);
+  }, []);
+
+  const updateUsername = useCallback((name) => {
+    setProfile((prev) => {
+      const next = { ...prev, username: name || "Player" };
+      try { localStorage.setItem("qm_profile", JSON.stringify(next)); } catch (e) { console.error(e); }
+      syncLeaderboard(deviceIdRef.current, next);
+      return next;
+    });
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -256,14 +298,14 @@ export default function QuizMaster() {
             )}
             {screen === "quiz" && (
               <QuizScreen T={T} mode={selectedMode} subtopicId={activeSubtopic} difficulty={selectedDiff}
-                onFinish={(result) => { finishQuiz(result); setScreen("results"); }} />
+                onFinish={(result) => { finishQuiz(result); setScreen("results"); }} onExit={goHome} />
             )}
             {screen === "results" && (
               <ResultsScreen T={T} lastResult={profile.history[0]} onPlayAgain={goHome} onHome={goHome} />
             )}
-            {screen === "leaderboard" && <LeaderboardScreen T={T} profile={profile} />}
-            {screen === "profile" && <ProfileScreen T={T} profile={profile} onReset={resetProgress} />}
-            {screen === "achievements" && <AchievementsScreen T={T} profile={profile} />}
+            {screen === "leaderboard" && <LeaderboardScreen T={T} profile={profile} onBack={goHome} />}
+            {screen === "profile" && <ProfileScreen T={T} profile={profile} onReset={resetProgress} onBack={goHome} onUsernameChange={updateUsername} />}
+            {screen === "achievements" && <AchievementsScreen T={T} profile={profile} onBack={goHome} />}
           </div>
           <BottomNav T={T} screen={screen} onHome={goHome} onSearchTab={() => setScreen("home")} onLeaderboard={() => setScreen("leaderboard")} onProfile={() => setScreen("profile")} />
           {toast && <Toast T={T} message={toast} />}
@@ -572,7 +614,7 @@ function BattleSetupScreen({ T, subtopic, onBack, onStart }) {
 }
 
 /* ---------------- Quiz gameplay ---------------- */
-function QuizScreen({ T, mode, subtopicId, difficulty, onFinish }) {
+function QuizScreen({ T, mode, subtopicId, difficulty, onFinish, onExit }) {
   const subtopic = mode === "classic" ? findSubtopic(subtopicId) : null;
   const questions = useRef(
     mode === "daily" ? buildDailyQuiz()
@@ -592,6 +634,7 @@ function QuizScreen({ T, mode, subtopicId, difficulty, onFinish }) {
   const [streak, setStreak] = useState(0);
   const [pointsEarned, setPointsEarned] = useState(0);
   const [shake, setShake] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
 
   const current = questions[idx % questions.length];
 
@@ -600,7 +643,7 @@ function QuizScreen({ T, mode, subtopicId, difficulty, onFinish }) {
   }, [onFinish, subtopic, mode]);
 
   useEffect(() => {
-    if (locked) return;
+    if (locked || confirmExit) return;
     if (timeLeft <= 0) {
       if (mode === "time") { endQuiz(correctCount, answeredCount, pointsEarned); return; }
       handleAnswer(-1);
@@ -608,7 +651,7 @@ function QuizScreen({ T, mode, subtopicId, difficulty, onFinish }) {
     }
     const t = setTimeout(() => setTimeLeft((v) => v - 1), 1000);
     return () => clearTimeout(t);
-  }, [timeLeft, locked]);
+  }, [timeLeft, locked, confirmExit]);
 
   function handleAnswer(optionIdx) {
     if (locked) return;
@@ -638,10 +681,23 @@ function QuizScreen({ T, mode, subtopicId, difficulty, onFinish }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: T.textDim }}>{progressLabel}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: T.gold }}><Zap size={14} /> {pointsEarned} pts</div>
-      </div>
+      {confirmExit ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, marginBottom: 14, background: T.surface, border: `1px solid ${T.coral}`, borderRadius: 14, padding: "10px 14px" }}>
+          <span style={{ fontSize: 12.5, color: T.coral, fontWeight: 700 }}>Quit? You'll lose this quiz's progress.</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="qm-btn" onClick={onExit} style={{ background: T.coral, border: "none", borderRadius: 10, padding: "6px 12px", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Quit</button>
+            <button className="qm-btn" onClick={() => setConfirmExit(false)} style={{ background: T.surface2, border: "none", borderRadius: 10, padding: "6px 12px", color: T.text, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, marginBottom: 14 }}>
+          <button className="qm-btn" onClick={() => setConfirmExit(true)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+            <X size={16} color={T.textDim} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: T.textDim }}>{progressLabel}</span>
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: T.gold }}><Zap size={14} /> {pointsEarned} pts</div>
+        </div>
+      )}
       <TimerRing T={T} pct={ringPct} danger={mode !== "time" && timeLeft <= 3} />
       <div className={shake ? "qm-shake" : ""} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 18, padding: 18, marginTop: 14, minHeight: 90 }}>
         {(mode === "time" || mode === "daily") && current.catId && (
@@ -708,15 +764,29 @@ function ResultsScreen({ T, lastResult, onPlayAgain, onHome }) {
 }
 
 /* ---------------- Leaderboard ---------------- */
-function LeaderboardScreen({ T, profile }) {
+function LeaderboardScreen({ T, profile, onBack }) {
   const [tab, setTab] = useState("global");
-  const demoPlayers = [
-    { name: "Amara O.", pts: 8420, lvl: 22 }, { name: "Kwame B.", pts: 7310, lvl: 19 },
-    { name: "Sofia R.", pts: 6900, lvl: 18 }, { name: "Yuki T.", pts: 5410, lvl: 15 }, { name: "Liam P.", pts: 4780, lvl: 13 },
-  ];
-  const rows = [...demoPlayers, { name: profile.username + " (you)", pts: profile.points, lvl: profile.level, you: true }].sort((a, b) => b.pts - a.pts);
+  const [rows, setRows] = useState(null); // null = loading
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    if (tab !== "global") return;
+    let cancelled = false;
+    setRows(null);
+    supabase.from("leaderboard").select("*").order("points", { ascending: false }).limit(20)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) { console.error(error); setLoadFailed(true); setRows([]); return; }
+        setRows(data || []);
+      });
+    return () => { cancelled = true; };
+  }, [tab]);
+
+  const youInTop = rows && rows.some((r) => r.username === profile.username && r.points === profile.points);
+
   return (
     <div>
+      <BackRow T={T} onBack={onBack} />
       <div className="qm-heading" style={{ fontSize: 19, fontWeight: 800, marginTop: 4 }}>Leaderboard</div>
       <div style={{ color: T.textDim, fontSize: 13, marginTop: 2 }}>See how you stack up</div>
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
@@ -724,31 +794,75 @@ function LeaderboardScreen({ T, profile }) {
           <button key={t} onClick={() => setTab(t)} className="qm-btn" style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: "none", background: tab === t ? `linear-gradient(135deg, ${T.cyan}, ${T.lime})` : T.surface, color: tab === t ? "#08110D" : T.textDim, fontWeight: 700, fontSize: 12.5, textTransform: "capitalize", cursor: "pointer" }}>{t}</button>
         ))}
       </div>
-      <div style={{ marginTop: 14, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
-        {rows.map((r, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: i < rows.length - 1 ? `1px solid ${T.border}` : "none", background: r.you ? `${T.gold}15` : "transparent" }}>
-            <div style={{ width: 22, fontWeight: 800, color: i < 3 ? T.gold : T.textDim, fontSize: 13 }}>{i + 1}</div>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: T.surface2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{r.name[0]}</div>
-            <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div><div style={{ fontSize: 11, color: T.textDim }}>Level {r.lvl}</div></div>
-            <div style={{ fontWeight: 800, fontSize: 13 }}>{r.pts.toLocaleString()}</div>
+
+      {tab !== "global" ? (
+        <div style={{ marginTop: 30, textAlign: "center", color: T.textDim, fontSize: 13 }}>
+          {tab === "friends" ? "Friends lists aren't built yet — this needs a way to connect with other players first." : "Weekly resets aren't built yet — for now, Global shows all-time scores."}
+        </div>
+      ) : rows === null ? (
+        <div style={{ marginTop: 30, textAlign: "center", color: T.textDim, fontSize: 13 }}>Loading rankings…</div>
+      ) : (
+        <>
+          <div style={{ marginTop: 14, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+            {rows.length === 0 && (
+              <div style={{ padding: 18, textAlign: "center", color: T.textDim, fontSize: 12.5 }}>
+                {loadFailed ? "Couldn't load the leaderboard right now." : "No scores yet — be the first to play a quiz!"}
+              </div>
+            )}
+            {rows.map((r, i) => {
+              const isYou = r.username === profile.username && r.points === profile.points;
+              return (
+                <div key={r.device_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: i < rows.length - 1 ? `1px solid ${T.border}` : "none", background: isYou ? `${T.gold}15` : "transparent" }}>
+                  <div style={{ width: 22, fontWeight: 800, color: i < 3 ? T.gold : T.textDim, fontSize: 13 }}>{i + 1}</div>
+                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: T.surface2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{(r.username || "P")[0]}</div>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 13 }}>{r.username}{isYou ? " (you)" : ""}</div><div style={{ fontSize: 11, color: T.textDim }}>Level {r.level}</div></div>
+                  <div style={{ fontWeight: 800, fontSize: 13 }}>{r.points.toLocaleString()}</div>
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
-      <div style={{ fontSize: 11, color: T.textDim, marginTop: 10, textAlign: "center" }}>Demo data shown alongside your real score — connect a backend for live global rankings.</div>
+          {rows.length > 0 && !youInTop && profile.quizzesPlayed > 0 && (
+            <div style={{ marginTop: 10, background: `${T.gold}15`, border: `1px solid ${T.gold}44`, borderRadius: 14, padding: "10px 14px", display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+              <span style={{ fontWeight: 700 }}>{profile.username} (you)</span>
+              <span style={{ fontWeight: 800 }}>{profile.points.toLocaleString()} · not yet in top 20</span>
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: T.textDim, marginTop: 10, textAlign: "center" }}>
+            Live scores from everyone playing this app. Play a quiz to join the board.
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 /* ---------------- Profile ---------------- */
-function ProfileScreen({ T, profile, onReset }) {
+function ProfileScreen({ T, profile, onReset, onBack, onUsernameChange }) {
   const acc = profile.questionsAnswered ? Math.round((profile.correctAnswers / profile.questionsAnswered) * 100) : 0;
   const favCat = profile.favoriteCategory ? CATEGORY_INDEX.find((c) => c.id === profile.favoriteCategory)?.label : "—";
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(profile.username);
   return (
     <div>
+      <BackRow T={T} onBack={onBack} />
       <div className="qm-heading" style={{ fontSize: 19, fontWeight: 800, marginTop: 4 }}>Profile</div>
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 16 }}>
-        <div style={{ width: 64, height: 64, borderRadius: "50%", background: `linear-gradient(135deg, ${T.cyan}, ${T.violet})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 800, color: "#fff" }}>{profile.username[0]}</div>
-        <div><div style={{ fontWeight: 800, fontSize: 17 }}>{profile.username}</div><div style={{ fontSize: 12.5, color: T.textDim }}>Level {profile.level} · {titleForLevel(profile.level)}</div></div>
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: `linear-gradient(135deg, ${T.cyan}, ${T.violet})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{profile.username[0]}</div>
+        <div style={{ flex: 1 }}>
+          {editingName ? (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} maxLength={20}
+                style={{ background: T.surface2, border: `1px solid ${T.cyan}`, borderRadius: 8, padding: "6px 8px", color: T.text, fontSize: 14, fontWeight: 700, fontFamily: "inherit", width: 120 }} />
+              <button className="qm-btn" onClick={() => { onUsernameChange(nameDraft.trim() || "Player"); setEditingName(false); }} style={{ background: T.cyan, border: "none", borderRadius: 8, padding: "6px 10px", color: "#08110D", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Save</button>
+            </div>
+          ) : (
+            <div onClick={() => { setNameDraft(profile.username); setEditingName(true); }} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ fontWeight: 800, fontSize: 17 }}>{profile.username}</div>
+              <span style={{ fontSize: 10, color: T.cyan, fontWeight: 700 }}>Edit</span>
+            </div>
+          )}
+          <div style={{ fontSize: 12.5, color: T.textDim, marginTop: 2 }}>Level {profile.level} · {titleForLevel(profile.level)}</div>
+        </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 18 }}>
         <StatCard T={T} label="Quizzes played" value={profile.quizzesPlayed} />
@@ -772,9 +886,10 @@ function StatCard({ T, label, value, span }) {
 }
 
 /* ---------------- Achievements ---------------- */
-function AchievementsScreen({ T, profile }) {
+function AchievementsScreen({ T, profile, onBack }) {
   return (
     <div>
+      <BackRow T={T} onBack={onBack} />
       <div className="qm-heading" style={{ fontSize: 19, fontWeight: 800, marginTop: 4 }}>Achievements</div>
       <div style={{ color: T.textDim, fontSize: 13, marginTop: 2 }}>{profile.achievements.length} / {ACHIEVEMENTS.length} unlocked</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
